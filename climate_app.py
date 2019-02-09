@@ -1,0 +1,204 @@
+import numpy as np
+
+import sqlalchemy
+from sqlalchemy.ext.automap import automap_base
+from sqlalchemy.orm import Session
+from sqlalchemy import create_engine, func
+
+import datetime as dt 
+# from datetime import strptime 
+
+from flask import Flask, jsonify
+
+#################################################
+# Database Setup
+#################################################
+engine = create_engine("sqlite:///Resources/hawaii.sqlite")
+
+# reflect an existing database into a new model
+Base = automap_base()
+# reflect the tables
+Base.prepare(engine, reflect=True)
+
+# Save references to each table
+Measurement = Base.classes.measurement
+Station = Base.classes.station
+
+# Create our session (link) from Python to the DB
+session = Session(engine)
+
+justice_league_members = [
+    {"superhero": "Aquaman", "real_name": "Arthur Curry"},
+    {"superhero": "Batman", "real_name": "Bruce Wayne"},
+    {"superhero": "Cyborg", "real_name": "Victor Stone"},
+    {"superhero": "Flash", "real_name": "Barry Allen"},
+    {"superhero": "Green Lantern", "real_name": "Hal Jordan"},
+    {"superhero": "Superman", "real_name": "Clark Kent/Kal-El"},
+    {"superhero": "Wonder Woman", "real_name": "Princess Diana"}
+]
+
+#################################################
+# Flask Setup
+#################################################
+app = Flask(__name__)
+
+
+#################################################
+# Flask Routes
+#################################################
+
+@app.route("/api/v1.0/justice-league")
+def justice_league():
+    """Return the justice league data as json"""
+
+    return jsonify(justice_league_members)
+
+
+@app.route("/")
+def welcome():
+    return (
+        f"Welcome to the Surf's Up Climate API!<br/>"
+        f"Available Routes:<br/>"
+        f"/api/v1.0/precipitation<br/>"
+        f"/api/v1.0/stations<br/>"
+        f"/api/v1.0/tobs<br/>"
+        f"/api/v1.0/&lt;start&gt;<br/>"
+        f"/api/v1.0/&lt;start&gt;/&lt;end&gt;"
+    )
+
+
+@app.route("/api/v1.0/precipitation")
+def precipitation():
+    """Return a list of all precipitation records"""
+    # Query all Measurement records
+    sel = [Measurement.id, Measurement.station, Measurement.date, Measurement.prcp, Measurement.tobs]
+    results = session.query(*sel).all()
+
+    # Convert list of tuples into normal list
+    all_precip = list(np.ravel(results))
+
+    return jsonify(all_precip)
+
+
+@app.route("/api/v1.0/stations")
+def stations():
+    """Return a list of stations data including the station, name, and location"""
+    # Query all stations
+    results = session.query(Station).all()
+
+    # Create a dictionary from the row data and append to a list of all_stations
+    all_stations = []
+    for station in results:
+        station_dict = {}
+        station_dict["id"] = station.id
+        station_dict["station"] = station.station
+        station_dict["name"] = station.name
+        station_dict["latitude"] = station.latitude
+        station_dict["longitude"] = station.longitude
+        station_dict["elevation"] = station.elevation
+        all_stations.append(station_dict)
+
+    return jsonify(all_stations)
+
+
+@app.route("/api/v1.0/tobs")
+def tobs():
+    """Return a list of temperature observation data"""
+
+    lastdate = session.query(Measurement.date).order_by(Measurement.date.desc()).first()[0]
+    print(f"lastdate = {lastdate}")
+    year, month, day = lastdate.split('-')
+    year = str(int(year)-1)
+    year_ago = year + '-' + month + '-' + day
+    print(f"year_ago = {year_ago}")
+
+    # Query all tobs since a year before the last observation
+    results = session.query(Measurement).filter(Measurement.date >= year_ago).all()
+
+    # Create a dictionary from the row data and append to a list of all_stations
+    all_tobs = []
+    for tobs in results:
+        tobs_dict = {}
+        tobs_dict["id"] = tobs.id
+        tobs_dict["station"] = tobs.station
+        tobs_dict["date"] = tobs.date
+        tobs_dict["prcp"] = tobs.prcp
+        tobs_dict["tobs"] = tobs.tobs
+        all_tobs.append(tobs_dict)
+
+    return jsonify(all_tobs)
+
+@app.route("/api/v1.0/<since_date>")
+def tobs_by_start(since_date):
+    """Return a list of min, average, and max temperature observation data since start date"""
+
+    sel = [func.min(Measurement.tobs), func.avg(Measurement.tobs), func.max(Measurement.tobs)]
+    print(since_date)
+
+    # Query all tobs since the start date
+    start_results = session.query(*sel).filter(Measurement.date >= since_date).all()
+
+    # Convert list of tuples into normal list
+    all_start = list(np.ravel(start_results))
+
+    # Create a dictionary from the row data and append to a list
+    return jsonify(all_start)
+
+
+@app.route("/api/v1.0/<start_date>/<end_date>", methods=['GET'])
+def tobs_by_start_end(start_date, end_date):
+    """Return a list of min, average, and max temperature observation data between start amd end"""
+
+    sel = [func.min(Measurement.tobs), func.avg(Measurement.tobs), func.max(Measurement.tobs)]
+    print(start_date)
+    print(end_date)
+
+    # start_date = dt.strptime(start, "%Y-%m-%d").date()
+    # end_date = dt.strptime(end, "%Y-%m-%d").date()
+    # start_date = start
+    # end_date = end 
+
+    # Query all tobs between the start and end dates
+    start_end_results = session.query(*sel).\
+        filter(Measurement.date >= start_date).filter(Measurement.date <= end_date).all()
+
+    # Convert list of tuples into normal list
+    all_start_end = list(np.ravel(start_end_results))
+
+    # Create a dictionary from the row data and append to a list
+    # return jsonify({"error": f"not found."}), 404
+    return jsonify(all_start_end)
+
+@app.route("/api/v1.0/justice-league/real_name/<real_name>")
+def justice_league_by_real_name(real_name):
+    """Fetch the Justice League character whose real_name matches
+       the path variable supplied by the user, or a 404 if not."""
+
+    canonicalized = real_name.replace(" ", "").lower()
+    for character in justice_league_members:
+        search_term = character["real_name"].replace(" ", "").lower()
+
+        if search_term == canonicalized:
+            return jsonify(character)
+
+    return jsonify({"error": f"Character with real_name {real_name} not found."}), 404
+
+
+@app.route("/api/v1.0/justice-league/superhero/<superhero>")
+def justice_league_by_superhero__name(superhero):
+    """Fetch the Justice League character whose superhero matches
+       the path variable supplied by the user, or a 404 if not."""
+
+    canonicalized = superhero.replace(" ", "").lower()
+    for character in justice_league_members:
+        search_term = character["superhero"].replace(" ", "").lower()
+
+        if search_term == canonicalized:
+            return jsonify(character)
+
+    return jsonify({"error": "Character not found."}), 404
+
+
+if __name__ == "__main__":
+    app.run(debug=True)
+
