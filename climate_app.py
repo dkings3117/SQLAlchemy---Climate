@@ -9,11 +9,16 @@ import datetime as dt
 # from datetime import strptime 
 
 from flask import Flask, jsonify
+from sqlalchemy.orm import scoped_session
+from sqlalchemy.orm import sessionmaker
 
 #################################################
 # Database Setup
 #################################################
 engine = create_engine("sqlite:///Resources/hawaii.sqlite")
+
+session_factory = sessionmaker(bind=engine)
+Session = scoped_session(session_factory)
 
 # reflect an existing database into a new model
 Base = automap_base()
@@ -41,7 +46,7 @@ app = Flask(__name__)
 def welcome():
     return (
         f"Welcome to the Surf's Up Climate API!<br/>"
-        f"Available Routes:<br/>"
+        f"Available Routes (Use YYYY-MM-DD format for start and end dates):<br/>"
         f"/api/v1.0/precipitation<br/>"
         f"/api/v1.0/stations<br/>"
         f"/api/v1.0/tobs<br/>"
@@ -57,8 +62,16 @@ def precipitation():
     sel = [Measurement.id, Measurement.station, Measurement.date, Measurement.prcp, Measurement.tobs]
     results = session.query(*sel).all()
 
-    # Convert list of tuples into normal list
-    all_precip = list(np.ravel(results))
+    # Create a dictionary from the row data and append to a list of all_precip
+    all_precip = []
+    for precip in results:
+        precip_dict = {}
+        precip_dict["id"] = precip.id
+        precip_dict["station"] = precip.station
+        precip_dict["date"] = precip.date
+        precip_dict["prcp"] = precip.prcp
+        precip_dict["tobs"] = precip.tobs
+        all_precip.append(precip_dict)
 
     return jsonify(all_precip)
 
@@ -89,16 +102,14 @@ def tobs():
     """Return a list of temperature observation data"""
 
     lastdate = session.query(Measurement.date).order_by(Measurement.date.desc()).first()[0]
-    print(f"lastdate = {lastdate}")
     year, month, day = lastdate.split('-')
     year = str(int(year)-1)
     year_ago = year + '-' + month + '-' + day
-    print(f"year_ago = {year_ago}")
 
     # Query all tobs since a year before the last observation
     results = session.query(Measurement).filter(Measurement.date >= year_ago).all()
 
-    # Create a dictionary from the row data and append to a list of all_stations
+    # Create a dictionary from the row data and append to a list of all_tobs
     all_tobs = []
     for tobs in results:
         tobs_dict = {}
@@ -116,7 +127,6 @@ def tobs_by_start(since_date):
     """Return a list of min, average, and max temperature observation data since start date"""
 
     sel = [func.min(Measurement.tobs), func.avg(Measurement.tobs), func.max(Measurement.tobs)]
-    print(since_date)
 
     # Query all tobs since the start date
     start_results = session.query(*sel).filter(Measurement.date >= since_date).all()
@@ -133,8 +143,6 @@ def tobs_by_start_end(start_date, end_date):
     """Return a list of min, average, and max temperature observation data between start amd end"""
 
     sel = [func.min(Measurement.tobs), func.avg(Measurement.tobs), func.max(Measurement.tobs)]
-    print(start_date)
-    print(end_date)
 
     # start_date = dt.strptime(start, "%Y-%m-%d").date()
     # end_date = dt.strptime(end, "%Y-%m-%d").date()
