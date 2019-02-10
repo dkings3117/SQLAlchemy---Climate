@@ -17,8 +17,8 @@ from sqlalchemy.orm import sessionmaker
 #################################################
 engine = create_engine("sqlite:///Resources/hawaii.sqlite")
 
-session_factory = sessionmaker(bind=engine)
-Session = scoped_session(session_factory)
+# session_factory = sessionmaker(bind=engine)
+# Session = scoped_session(session_factory)
 
 # reflect an existing database into a new model
 Base = automap_base()
